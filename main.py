@@ -4,7 +4,7 @@ from flask import Flask
 from threading import Thread
 import os
 
-TOKEN = os.getenv("BOT_TOKEN")
+TOKEN = "8630546908:AAGJFPluYgvyqhVO-43DMDizGrYknDvJbjc"
 
 expenses = []
 
