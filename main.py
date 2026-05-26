@@ -1,10 +1,32 @@
 from flask import Flask, request
 import requests
+import os
+import json
+import gspread
 
-TOKEN = "8630546908:AAGJFPluYgvyqhVO-43DMDizGrYknDvJbjc"
+from google.oauth2.service_account import Credentials
+from datetime import datetime
+
+TOKEN = os.environ["BOT_TOKEN"]
+
+creds_dict = json.loads(os.environ["GOOGLE_CREDENTIALS"])
+
+scopes = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+]
+
+creds = Credentials.from_service_account_info(
+    creds_dict,
+    scopes=scopes
+)
+
+client = gspread.authorize(creds)
+
+sheet = client.open("BudgetBot Expenses").sheet1
 
 app = Flask(__name__)
-expenses = []
+
 user_state = {}
 
 CATEGORIES = [
@@ -18,13 +40,16 @@ CATEGORIES = [
 
 def send_message(chat_id, text, keyboard=None):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    payload = {"chat_id": chat_id, "text": text}
+
+    payload = {
+        "chat_id": chat_id,
+        "text": text
+    }
 
     if keyboard:
         payload["reply_markup"] = {
             "keyboard": keyboard,
-            "resize_keyboard": True,
-            "one_time_keyboard": False
+            "resize_keyboard": True
         }
 
     requests.post(url, json=payload)
@@ -46,39 +71,57 @@ def webhook():
     if text == "/start":
         send_message(
             chat_id,
-            "Hi! Choose a category:",
+            "Choose a category:",
             CATEGORIES
         )
 
     elif text == "/total":
-        total = sum(item["amount"] for item in expenses)
-        send_message(chat_id, f"Total expenses: {total} won")
+        records = sheet.get_all_records()
+
+        total = sum(int(row["Amount"]) for row in records)
+
+        send_message(
+            chat_id,
+            f"Total expenses: {total} KRW"
+        )
 
     elif text in [item for row in CATEGORIES for item in row]:
+
         category = text.split(" ", 1)[1]
-        user_state[chat_id] = {"category": category}
-        send_message(chat_id, f"How much did you spend on {category}?")
+
+        user_state[chat_id] = {
+            "category": category
+        }
+
+        send_message(
+            chat_id,
+            f"How much did you spend on {category}?"
+        )
 
     else:
         try:
             amount = int(text)
+
             category = user_state[chat_id]["category"]
 
-            expenses.append({
-                "category": category,
-                "amount": amount
-            })
+            sheet.append_row([
+                str(datetime.now()),
+                "Camilla",
+                category,
+                amount,
+                "KRW"
+            ])
 
             send_message(
                 chat_id,
-                f"Added: {category} — {amount} won",
+                f"Added: {category} — {amount} KRW",
                 CATEGORIES
             )
 
         except:
             send_message(
                 chat_id,
-                "Please choose a category first, then enter the amount.",
+                "Please choose category first.",
                 CATEGORIES
             )
 
@@ -86,7 +129,11 @@ def webhook():
 
 @app.route("/set_webhook")
 def set_webhook():
+
     webhook_url = "https://budgetboy.onrender.com/webhook"
+
     url = f"https://api.telegram.org/bot{TOKEN}/setWebhook?url={webhook_url}"
+
     response = requests.get(url)
+
     return response.text
