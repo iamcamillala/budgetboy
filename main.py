@@ -3,13 +3,20 @@ import requests
 import os
 import json
 import gspread
+
 from google.oauth2.service_account import Credentials
 from datetime import datetime
 
 TOKEN = os.environ.get("BOT_TOKEN")
 
 app = Flask(__name__)
+
 user_state = {}
+
+MAIN_MENU = [
+    ["➕ Add expense"],
+    ["📊 Statistics"],
+]
 
 CATEGORIES = [
     ["☕ Coffee", "🍽 Restaurant"],
@@ -18,11 +25,24 @@ CATEGORIES = [
     ["💄 Beauty", "💊 Health"],
     ["🏠 Home", "🎁 Gifts"],
     ["✈️ Travel", "🎬 Entertainment"],
+    ["⬅️ Back"]
+]
+
+PERIODS = [
+    ["📅 This month"],
+    ["🗓 This year"],
+    ["🌍 All time"],
+    ["⬅️ Back"]
 ]
 
 def send_message(chat_id, text, keyboard=None):
+
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    payload = {"chat_id": chat_id, "text": text}
+
+    payload = {
+        "chat_id": chat_id,
+        "text": text
+    }
 
     if keyboard:
         payload["reply_markup"] = {
@@ -33,10 +53,8 @@ def send_message(chat_id, text, keyboard=None):
     requests.post(url, json=payload)
 
 def get_sheet():
-    creds_json = os.environ.get("GOOGLE_CREDENTIALS")
 
-    if not creds_json:
-        raise Exception("GOOGLE_CREDENTIALS is missing")
+    creds_json = os.environ.get("GOOGLE_CREDENTIALS")
 
     creds_dict = json.loads(creds_json)
 
@@ -45,7 +63,11 @@ def get_sheet():
         "https://www.googleapis.com/auth/drive"
     ]
 
-    creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+    creds = Credentials.from_service_account_info(
+        creds_dict,
+        scopes=scopes
+    )
+
     client = gspread.authorize(creds)
 
     return client.open("BudgetBot Expenses").sheet1
@@ -56,37 +78,107 @@ def home():
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
+
     data = request.get_json()
 
     if "message" not in data:
         return "ok"
 
     chat_id = data["message"]["chat"]["id"]
+
     text = data["message"].get("text", "")
 
     if text == "/start":
-        send_message(chat_id, "Choose a category:", CATEGORIES)
 
-    elif text == "/total":
-        try:
-            sheet = get_sheet()
-            records = sheet.get_all_records()
-            total = sum(int(row["Amount"]) for row in records if row.get("Amount"))
-            send_message(chat_id, f"Total expenses: {total} KRW")
-        except Exception as e:
-            send_message(chat_id, f"Google Sheets error:\n{e}")
+        send_message(
+            chat_id,
+            "Main menu:",
+            MAIN_MENU
+        )
+
+    elif text == "➕ Add expense":
+
+        send_message(
+            chat_id,
+            "Choose category:",
+            CATEGORIES
+        )
+
+    elif text == "📊 Statistics":
+
+        user_state[chat_id] = {
+            "mode": "statistics"
+        }
+
+        send_message(
+            chat_id,
+            "Choose period:",
+            PERIODS
+        )
+
+    elif text == "⬅️ Back":
+
+        send_message(
+            chat_id,
+            "Main menu:",
+            MAIN_MENU
+        )
 
     elif text in [item for row in CATEGORIES for item in row]:
+
         category = text.split(" ", 1)[1]
-        user_state[chat_id] = {"category": category}
-        send_message(chat_id, f"How much did you spend on {category}?")
+
+        user_state[chat_id] = {
+            "mode": "expense",
+            "category": category
+        }
+
+        send_message(
+            chat_id,
+            f"How much did you spend on {category}?"
+        )
+
+    elif text in ["📅 This month", "🗓 This year", "🌍 All time"]:
+
+        try:
+
+            sheet = get_sheet()
+
+            records = sheet.get_all_records()
+
+            total = 0
+
+            for row in records:
+
+                amount = row.get("Amount")
+
+                if amount:
+                    total += int(amount)
+
+            send_message(
+                chat_id,
+                f"Total expenses:\n\n{total:,} KRW",
+                MAIN_MENU
+            )
+
+        except Exception as e:
+
+            send_message(
+                chat_id,
+                f"Statistics error:\n{e}",
+                MAIN_MENU
+            )
 
     else:
+
         try:
+
             amount = int(text)
+
             category = user_state[chat_id]["category"]
 
             sheet = get_sheet()
+
             sheet.append_row([
                 str(datetime.now()),
                 "Camilla",
@@ -95,16 +187,29 @@ def webhook():
                 "KRW"
             ])
 
-            send_message(chat_id, f"Added: {category} — {amount} KRW", CATEGORIES)
+            send_message(
+                chat_id,
+                f"Added:\n{category} — {amount:,} KRW",
+                MAIN_MENU
+            )
 
         except Exception as e:
-            send_message(chat_id, f"Error:\n{e}", CATEGORIES)
+
+            send_message(
+                chat_id,
+                f"Error:\n{e}",
+                MAIN_MENU
+            )
 
     return "ok"
 
 @app.route("/set_webhook")
 def set_webhook():
+
     webhook_url = "https://budgetboy.onrender.com/webhook"
+
     url = f"https://api.telegram.org/bot{TOKEN}/setWebhook?url={webhook_url}"
+
     response = requests.get(url)
+
     return response.text
