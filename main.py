@@ -55,12 +55,14 @@ async def total(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Total expenses: {total_amount} won"
     )
 
-Thread(target=run_web).start()
-
 app = ApplicationBuilder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("total", total))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-app.run_polling()
+Thread(target=run_web, daemon=True).start()
+
+print("BOT STARTED")
+
+app.run_polling(drop_pending_updates=True)
