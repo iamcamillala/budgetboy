@@ -5,10 +5,29 @@ TOKEN = "8630546908:AAGJFPluYgvyqhVO-43DMDizGrYknDvJbjc"
 
 app = Flask(__name__)
 expenses = []
+user_state = {}
 
-def send_message(chat_id, text):
+CATEGORIES = [
+    ["☕ Coffee", "🍽 Restaurant"],
+    ["🛒 Supermarket", "🥡 Delivery"],
+    ["🚕 Taxi", "👗 Clothes"],
+    ["💄 Beauty", "💊 Health"],
+    ["🏠 Home", "🎁 Gifts"],
+    ["✈️ Travel", "🎬 Entertainment"],
+]
+
+def send_message(chat_id, text, keyboard=None):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    requests.post(url, json={"chat_id": chat_id, "text": text})
+    payload = {"chat_id": chat_id, "text": text}
+
+    if keyboard:
+        payload["reply_markup"] = {
+            "keyboard": keyboard,
+            "resize_keyboard": True,
+            "one_time_keyboard": False
+        }
+
+    requests.post(url, json=payload)
 
 @app.route("/")
 def home():
@@ -18,31 +37,50 @@ def home():
 def webhook():
     data = request.get_json()
 
-    if "message" in data:
-        chat_id = data["message"]["chat"]["id"]
-        text = data["message"].get("text", "")
+    if "message" not in data:
+        return "ok"
 
-        if text == "/start":
-            send_message(chat_id, "Hi! Send expense like:\nCamilla coffee 4500")
-        elif text == "/total":
-            total = sum(item["amount"] for item in expenses)
-            send_message(chat_id, f"Total expenses: {total} won")
-        else:
-            try:
-                parts = text.split()
-                person = parts[0]
-                category = parts[1]
-                amount = int(parts[2])
+    chat_id = data["message"]["chat"]["id"]
+    text = data["message"].get("text", "")
 
-                expenses.append({
-                    "person": person,
-                    "category": category,
-                    "amount": amount
-                })
+    if text == "/start":
+        send_message(
+            chat_id,
+            "Hi! Choose a category:",
+            CATEGORIES
+        )
 
-                send_message(chat_id, f"Added: {person} | {category} | {amount} won")
-            except:
-                send_message(chat_id, "Error 😢\nExample:\nCamilla coffee 4500")
+    elif text == "/total":
+        total = sum(item["amount"] for item in expenses)
+        send_message(chat_id, f"Total expenses: {total} won")
+
+    elif text in [item for row in CATEGORIES for item in row]:
+        category = text.split(" ", 1)[1]
+        user_state[chat_id] = {"category": category}
+        send_message(chat_id, f"How much did you spend on {category}?")
+
+    else:
+        try:
+            amount = int(text)
+            category = user_state[chat_id]["category"]
+
+            expenses.append({
+                "category": category,
+                "amount": amount
+            })
+
+            send_message(
+                chat_id,
+                f"Added: {category} — {amount} won",
+                CATEGORIES
+            )
+
+        except:
+            send_message(
+                chat_id,
+                "Please choose a category first, then enter the amount.",
+                CATEGORIES
+            )
 
     return "ok"
 
