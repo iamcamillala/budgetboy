@@ -3,30 +3,12 @@ import requests
 import os
 import json
 import gspread
-
 from google.oauth2.service_account import Credentials
 from datetime import datetime
 
-TOKEN = os.environ["BOT_TOKEN"]
-
-creds_dict = json.loads(os.environ["GOOGLE_CREDENTIALS"])
-
-scopes = [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive"
-]
-
-creds = Credentials.from_service_account_info(
-    creds_dict,
-    scopes=scopes
-)
-
-client = gspread.authorize(creds)
-
-sheet = client.open("BudgetBot Expenses").sheet1
+TOKEN = os.environ.get("BOT_TOKEN")
 
 app = Flask(__name__)
-
 user_state = {}
 
 CATEGORIES = [
@@ -40,11 +22,7 @@ CATEGORIES = [
 
 def send_message(chat_id, text, keyboard=None):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-
-    payload = {
-        "chat_id": chat_id,
-        "text": text
-    }
+    payload = {"chat_id": chat_id, "text": text}
 
     if keyboard:
         payload["reply_markup"] = {
@@ -53,6 +31,24 @@ def send_message(chat_id, text, keyboard=None):
         }
 
     requests.post(url, json=payload)
+
+def get_sheet():
+    creds_json = os.environ.get("GOOGLE_CREDENTIALS")
+
+    if not creds_json:
+        raise Exception("GOOGLE_CREDENTIALS is missing")
+
+    creds_dict = json.loads(creds_json)
+
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
+
+    creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+    client = gspread.authorize(creds)
+
+    return client.open("BudgetBot Expenses").sheet1
 
 @app.route("/")
 def home():
@@ -69,41 +65,28 @@ def webhook():
     text = data["message"].get("text", "")
 
     if text == "/start":
-        send_message(
-            chat_id,
-            "Choose a category:",
-            CATEGORIES
-        )
+        send_message(chat_id, "Choose a category:", CATEGORIES)
 
     elif text == "/total":
-        records = sheet.get_all_records()
-
-        total = sum(int(row["Amount"]) for row in records)
-
-        send_message(
-            chat_id,
-            f"Total expenses: {total} KRW"
-        )
+        try:
+            sheet = get_sheet()
+            records = sheet.get_all_records()
+            total = sum(int(row["Amount"]) for row in records if row.get("Amount"))
+            send_message(chat_id, f"Total expenses: {total} KRW")
+        except Exception as e:
+            send_message(chat_id, f"Google Sheets error:\n{e}")
 
     elif text in [item for row in CATEGORIES for item in row]:
-
         category = text.split(" ", 1)[1]
-
-        user_state[chat_id] = {
-            "category": category
-        }
-
-        send_message(
-            chat_id,
-            f"How much did you spend on {category}?"
-        )
+        user_state[chat_id] = {"category": category}
+        send_message(chat_id, f"How much did you spend on {category}?")
 
     else:
         try:
             amount = int(text)
-
             category = user_state[chat_id]["category"]
 
+            sheet = get_sheet()
             sheet.append_row([
                 str(datetime.now()),
                 "Camilla",
@@ -112,28 +95,16 @@ def webhook():
                 "KRW"
             ])
 
-            send_message(
-                chat_id,
-                f"Added: {category} — {amount} KRW",
-                CATEGORIES
-            )
+            send_message(chat_id, f"Added: {category} — {amount} KRW", CATEGORIES)
 
-        except:
-            send_message(
-                chat_id,
-                "Please choose category first.",
-                CATEGORIES
-            )
+        except Exception as e:
+            send_message(chat_id, f"Error:\n{e}", CATEGORIES)
 
     return "ok"
 
 @app.route("/set_webhook")
 def set_webhook():
-
     webhook_url = "https://budgetboy.onrender.com/webhook"
-
     url = f"https://api.telegram.org/bot{TOKEN}/setWebhook?url={webhook_url}"
-
     response = requests.get(url)
-
     return response.text
