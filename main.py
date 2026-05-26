@@ -72,7 +72,7 @@ def get_sheet():
 
     client = gspread.authorize(creds)
 
-    return client.open("BudgetBot Expenses").sheet1
+    return client.open("BudgetBot").sheet1
 
 @app.route("/")
 def home():
