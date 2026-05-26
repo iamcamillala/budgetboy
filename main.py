@@ -1,72 +1,54 @@
-from flask import Flask
-from threading import Thread
-from telegram import Update
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    MessageHandler,
-    ContextTypes,
-    filters,
-)
+from flask import Flask, request
+import requests
 
 TOKEN = "8630546908:AAGJFPluYgvyqhVO-43DMDizGrYknDvJbjc"
 
+app = Flask(__name__)
 expenses = []
 
-app_web = Flask(__name__)
+def send_message(chat_id, text):
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    requests.post(url, json={"chat_id": chat_id, "text": text})
 
-@app_web.route("/")
+@app.route("/")
 def home():
     return "Budget bot is running!"
 
-def run_web():
-    app_web.run(host="0.0.0.0", port=10000)
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    data = request.get_json()
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Hi! Send expense like:\nCamilla coffee 4500"
-    )
+    if "message" in data:
+        chat_id = data["message"]["chat"]["id"]
+        text = data["message"].get("text", "")
 
-async def total(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    total_sum = sum(item["amount"] for item in expenses)
+        if text == "/start":
+            send_message(chat_id, "Hi! Send expense like:\nCamilla coffee 4500")
+        elif text == "/total":
+            total = sum(item["amount"] for item in expenses)
+            send_message(chat_id, f"Total expenses: {total} won")
+        else:
+            try:
+                parts = text.split()
+                person = parts[0]
+                category = parts[1]
+                amount = int(parts[2])
 
-    await update.message.reply_text(
-        f"Total expenses: {total_sum} won"
-    )
+                expenses.append({
+                    "person": person,
+                    "category": category,
+                    "amount": amount
+                })
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        text = update.message.text.split()
+                send_message(chat_id, f"Added: {person} | {category} | {amount} won")
+            except:
+                send_message(chat_id, "Error 😢\nExample:\nCamilla coffee 4500")
 
-        person = text[0]
-        category = text[1]
-        amount = int(text[2])
+    return "ok"
 
-        expenses.append({
-            "person": person,
-            "category": category,
-            "amount": amount
-        })
-
-        await update.message.reply_text(
-            f"Added: {person} | {category} | {amount} won"
-        )
-
-    except:
-        await update.message.reply_text(
-            "Error 😢\nExample:\nCamilla coffee 4500"
-        )
-
-telegram_app = ApplicationBuilder().token(TOKEN).build()
-
-telegram_app.add_handler(CommandHandler("start", start))
-telegram_app.add_handler(CommandHandler("total", total))
-telegram_app.add_handler(
-    MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
-)
-
-Thread(target=run_web).start()
-
-print("BOT STARTED")
-
-telegram_app.run_polling()
+@app.route("/set_webhook")
+def set_webhook():
+    webhook_url = "https://budgetboy.onrender.com/webhook"
+    url = f"https://api.telegram.org/bot{TOKEN}/setWebhook?url={webhook_url}"
+    response = requests.get(url)
+    return response.text
