@@ -50,7 +50,9 @@ def send_message(chat_id, text, keyboard=None):
             "resize_keyboard": True
         }
 
-    requests.post(url, json=payload)
+    response = requests.post(url, json=payload)
+
+    return response
 
 def get_sheet():
 
@@ -106,10 +108,6 @@ def webhook():
 
     elif text == "📊 Statistics":
 
-        user_state[chat_id] = {
-            "mode": "statistics"
-        }
-
         send_message(
             chat_id,
             "Choose period:",
@@ -163,9 +161,14 @@ def webhook():
 
         except Exception as e:
 
+            error_text = f"{type(e).__name__}: {str(e)}"
+
+            if hasattr(e, "response"):
+                error_text += f"\n\nResponse text:\n{e.response.text}"
+
             send_message(
                 chat_id,
-                f"Statistics error:\n{e}",
+                f"Statistics error:\n{error_text}",
                 MAIN_MENU
             )
 
@@ -195,9 +198,14 @@ def webhook():
 
         except Exception as e:
 
+            error_text = f"{type(e).__name__}: {str(e)}"
+
+            if hasattr(e, "response"):
+                error_text += f"\n\nResponse text:\n{e.response.text}"
+
             send_message(
                 chat_id,
-                f"Error:\n{e}",
+                f"Error:\n{error_text}",
                 MAIN_MENU
             )
 
