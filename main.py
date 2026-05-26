@@ -1,37 +1,46 @@
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from flask import Flask
 from threading import Thread
-import os
+from telegram import Update
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    filters,
+)
 
 TOKEN = "8630546908:AAGJFPluYgvyqhVO-43DMDizGrYknDvJbjc"
 
 expenses = []
 
-web_app = Flask("")
+app_web = Flask(__name__)
 
-@web_app.route("/")
+@app_web.route("/")
 def home():
     return "Budget bot is running!"
 
 def run_web():
-    port = int(os.environ.get("PORT", 10000))
-    web_app.run(host="0.0.0.0", port=port)
+    app_web.run(host="0.0.0.0", port=10000)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Hi! Send an expense like this:\n\nCamilla coffee 4500\nJames restaurant 32000\nShared supermarket 78000"
+        "Hi! Send expense like:\nCamilla coffee 4500"
+    )
+
+async def total(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    total_sum = sum(item["amount"] for item in expenses)
+
+    await update.message.reply_text(
+        f"Total expenses: {total_sum} won"
     )
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-
     try:
-        parts = text.split()
+        text = update.message.text.split()
 
-        person = parts[0]
-        category = parts[1]
-        amount = int(parts[2])
+        person = text[0]
+        category = text[1]
+        amount = int(text[2])
 
         expenses.append({
             "person": person,
@@ -45,24 +54,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except:
         await update.message.reply_text(
-            "Error 😢\nSend it like this:\nCamilla coffee 4500"
+            "Error 😢\nExample:\nCamilla coffee 4500"
         )
 
-async def total(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    total_amount = sum(item["amount"] for item in expenses)
+telegram_app = ApplicationBuilder().token(TOKEN).build()
 
-    await update.message.reply_text(
-        f"Total expenses: {total_amount} won"
-    )
+telegram_app.add_handler(CommandHandler("start", start))
+telegram_app.add_handler(CommandHandler("total", total))
+telegram_app.add_handler(
+    MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
+)
 
-app = ApplicationBuilder().token(TOKEN).build()
-
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("total", total))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-Thread(target=run_web, daemon=True).start()
+Thread(target=run_web).start()
 
 print("BOT STARTED")
 
-app.run_polling(drop_pending_updates=True)
+telegram_app.run_polling()
