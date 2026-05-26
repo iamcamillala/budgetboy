@@ -1,14 +1,26 @@
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+from flask import Flask
+from threading import Thread
 import os
 
 TOKEN = os.getenv("BOT_TOKEN")
 
 expenses = []
 
+web_app = Flask("")
+
+@web_app.route("/")
+def home():
+    return "Budget bot is running!"
+
+def run_web():
+    port = int(os.environ.get("PORT", 10000))
+    web_app.run(host="0.0.0.0", port=port)
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Привет! Отправь расход так:\n\nКамилла кофе 4500"
+        "Hi! Send an expense like this:\n\nCamilla coffee 4500\nJames restaurant 32000\nShared supermarket 78000"
     )
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -28,20 +40,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         })
 
         await update.message.reply_text(
-            f"Добавлено: {person} | {category} | {amount} вон"
+            f"Added: {person} | {category} | {amount} won"
         )
 
     except:
         await update.message.reply_text(
-            "Ошибка 😢\nПиши так:\nКамилла кофе 4500"
+            "Error 😢\nSend it like this:\nCamilla coffee 4500"
         )
 
 async def total(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total_amount = sum(item["amount"] for item in expenses)
 
     await update.message.reply_text(
-        f"Общие расходы: {total_amount} вон"
+        f"Total expenses: {total_amount} won"
     )
+
+Thread(target=run_web).start()
 
 app = ApplicationBuilder().token(TOKEN).build()
 
